@@ -2,15 +2,19 @@ const socket = io();
 let me = null;
 let currentChat = null;
 let isRegMode = false;
-let allMessages = []; // Локальное хранилище всех сообщений
+let allMessages = [];
+let pendingImage = null;
+let typingTimeout = null;
 
-// ПЕРЕКЛЮЧЕНИЕ ЭКРАНОВ
-function showView(id) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
+// Помощник для цвета аватарок
+function getAvStyle(user) {
+    if (user.avatar) return `background-image:url(${user.avatar})`;
+    let hash = 0;
+    for (let i = 0; i < user.username.length; i++) hash = user.username.charCodeAt(i) + ((hash << 5) - hash);
+    return `background-color: hsl(${Math.abs(hash) % 360}, 65%, 75%)`;
 }
 
-// 1. АВТОРИЗАЦИЯ
+// 1. Авторизация
 function toggleAuth(reg) {
     isRegMode = reg;
     document.getElementById('t-login').className = reg ? '' : 'active';
@@ -25,7 +29,6 @@ function doAuth() {
         username: document.getElementById('usr-in').value,
         isReg: isRegMode
     };
-    if (!data.login || !data.password) return alert('Заполни поля');
     socket.emit('auth', data);
 }
 
@@ -37,84 +40,76 @@ socket.on('auth_success', user => {
     showView('main-screen');
 });
 
-// 2. ЛОГИКА СПИСКА ЧАТОВ И ПОИСКА
+// 2. Поиск и Списки
 function doSearch() {
     const q = document.getElementById('search-in').value.trim();
-    if (q.length > 0) {
-        socket.emit('search', q);
-    } else {
-        renderChatList(); // Если поле пустое, возвращаем список активных чатов
-    }
+    if (q.length > 0) socket.emit('search', q);
+    else renderChatList();
 }
 
 socket.on('search_results', users => {
     const list = document.getElementById('contacts-list');
-    list.innerHTML = '<p style="padding:10px; opacity:0.6">Результаты поиска:</p>';
+    list.innerHTML = '<p style="padding:10px; opacity:0.5; font-size:12px;">Глобальный поиск</p>';
     users.forEach(u => renderUserItem(u, list));
 });
 
-// Отрисовка элемента пользователя в списке
 function renderUserItem(user, container) {
     const item = document.createElement('div');
     item.className = 'contact-item glass';
+    const avStyle = getAvStyle(user);
+    const letter = user.avatar ? '' : user.username.charAt(0).toUpperCase();
+    
     item.innerHTML = `
-        <div class="avatar-circle sm" style="background-image:url(${user.avatar || ''})"></div>
+        <div class="avatar-circle sm" style="${avStyle}">${letter}</div>
         <div class="contact-info">
             <b>@${user.username}</b>
-            <span class="last-msg">${user.lastMsg || 'Нажми, чтобы написать'}</span>
+            <span class="last-msg">${user.lastMsg || 'Написать...'}</span>
         </div>
     `;
     item.onclick = () => openChat(user);
     container.appendChild(item);
 }
 
-// Рендер списка активных чатов (с кем уже есть переписка)
 function renderChatList() {
     const list = document.getElementById('contacts-list');
     list.innerHTML = '';
-    
-    // Получаем уникальных собеседников
-    const partners = new Set();
-    allMessages.forEach(m => {
-        if (m.from !== me.username) partners.add(m.from);
-        if (m.to !== me.username) partners.add(m.to);
-    });
+    const partners = [...new Set(allMessages.map(m => m.from === me.username ? m.to : m.from))];
 
-    if (partners.size === 0) {
-        list.innerHTML = '<div style="text-align:center; margin-top:50px; opacity:0.5">У вас пока нет чатов.<br>Используйте поиск выше.</div>';
+    if (partners.length === 0) {
+        list.innerHTML = '<div style="text-align:center;margin-top:40px;opacity:0.5">Нет чатов</div>';
         return;
     }
 
-    partners.forEach(p => {
-        const lastMsg = allMessages.filter(m => m.from === p || m.to === p).pop();
+    partners.reverse().forEach(p => {
+        const chatMsgs = allMessages.filter(m => m.from === p || m.to === p);
+        const last = chatMsgs[chatMsgs.length - 1];
+        const prefix = last.from === me.username ? "Вы: " : "";
         renderUserItem({
             username: p,
-            avatar: '', // В идеале сервер должен отдавать аватарки активных чатов тоже
-            lastMsg: lastMsg ? (lastMsg.type === 'text' ? lastMsg.text : '📷 Фотография') : ''
+            lastMsg: prefix + (last.type === 'text' ? last.text : '📷 Фото')
         }, list);
     });
 }
 
-// 3. ЧАТ
+// 3. Чат
 function openChat(user) {
     currentChat = user.username;
     document.getElementById('chat-title').innerText = '@' + user.username;
-    document.getElementById('chat-avatar').style.backgroundImage = `url(${user.avatar || ''})`;
+    const avStyle = getAvStyle(user);
+    document.getElementById('chat-avatar').style = avStyle;
+    document.getElementById('chat-avatar').innerText = user.avatar ? '' : user.username.charAt(0).toUpperCase();
     showView('chat-screen');
-    renderMessages(); // Загружаем сообщения из локального allMessages
+    renderMessages();
 }
 
 function renderMessages() {
     const flow = document.getElementById('chat-flow');
     flow.innerHTML = '';
-    const myHistory = allMessages.filter(m => 
-        (m.from === me.username && m.to === currentChat) || 
-        (m.to === me.username && m.from === currentChat)
-    );
-    myHistory.forEach(appendMessageUI);
+    allMessages.filter(m => (m.from === me.username && m.to === currentChat) || (m.to === me.username && m.from === currentChat))
+               .forEach(appendMsgUI);
 }
 
-function appendMessageUI(m) {
+function appendMsgUI(m) {
     const flow = document.getElementById('chat-flow');
     const div = document.createElement('div');
     div.className = `msg ${m.from === me.username ? 'my' : 'their'}`;
@@ -123,50 +118,69 @@ function appendMessageUI(m) {
     flow.scrollTop = flow.scrollHeight;
 }
 
-function closeChat() { 
-    showView('main-screen'); 
-    currentChat = null; 
-    renderChatList(); // Обновляем список чатов на главной
+// Отправка и Типизация
+function notifyTyping() {
+    if (currentChat) socket.emit('typing', { from: me.username, to: currentChat });
 }
 
-// СООБЩЕНИЯ (ПОЛУЧЕНИЕ И ОТПРАВКА)
-socket.on('chat_history', history => {
-    allMessages = history;
-    renderChatList();
-});
-
-socket.on('msg_receive', m => {
-    allMessages.push(m);
-    if (currentChat === m.from || currentChat === m.to) {
-        appendMessageUI(m);
-    } else {
-        renderChatList(); // Обновляем превью на главной, если мы не в этом чате
+socket.on('is_typing', data => {
+    if (currentChat === data.from && data.to === me.username) {
+        document.getElementById('typing-status').innerText = 'печатает...';
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => document.getElementById('typing-status').innerText = 'в сети', 2000);
     }
 });
 
-function sendTxt() {
-    const text = document.getElementById('msg-in').value.trim();
-    if (!text || !currentChat) return;
-    socket.emit('msg', { to: currentChat, text, type: 'text' });
-    document.getElementById('msg-in').value = '';
-}
-
-function sendImg() {
-    const file = document.getElementById('img-in').files[0];
-    if (!file) return;
+function handleFileSelect(input) {
     const reader = new FileReader();
-    reader.onload = () => socket.emit('msg', { to: currentChat, text: reader.result, type: 'img' });
-    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+        pendingImage = e.target.result;
+        document.getElementById('image-preview-img').src = pendingImage;
+        document.getElementById('image-preview-container').classList.remove('hidden');
+    };
+    reader.readAsDataURL(input.files[0]);
 }
 
-// ПРОФИЛЬ (БЕЗ ИЗМЕНЕНИЙ)
-function showProfile(show) { document.getElementById('profile-modal').classList.toggle('hidden', !show); }
+function cancelImage() {
+    pendingImage = null;
+    document.getElementById('image-preview-container').classList.add('hidden');
+    document.getElementById('img-in').value = '';
+}
+
+function sendTxt() {
+    const txt = document.getElementById('msg-in').value.trim();
+    if (pendingImage) {
+        socket.emit('msg', { to: currentChat, text: pendingImage, type: 'img' });
+        cancelImage();
+    }
+    if (txt) {
+        socket.emit('msg', { to: currentChat, text: txt, type: 'text' });
+        document.getElementById('msg-in').value = '';
+    }
+}
+
+// Служебные
+socket.on('chat_history', h => { allMessages = h; renderChatList(); });
+socket.on('msg_receive', m => { 
+    allMessages.push(m); 
+    if (currentChat === m.from || currentChat === m.to) appendMsgUI(m);
+    else renderChatList();
+});
+
+function closeChat() { showView('main-screen'); currentChat = null; renderChatList(); }
+function showProfile(s) { document.getElementById('profile-modal').classList.toggle('hidden', !s); }
+function showView(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
 function renderProfile() {
     document.getElementById('my-name').innerText = '@' + me.username;
     document.getElementById('prof-user-label').innerText = '@' + me.username;
-    const av = me.avatar ? `url(${me.avatar})` : '';
-    document.getElementById('my-avatar').style.backgroundImage = av;
-    document.getElementById('prof-preview').style.backgroundImage = av;
+    const av = getAvStyle(me);
+    document.getElementById('my-avatar').style = av;
+    document.getElementById('my-avatar').innerText = me.avatar ? '' : me.username.charAt(0).toUpperCase();
+    document.getElementById('prof-preview').style = av;
+    document.getElementById('prof-preview').innerText = me.avatar ? '' : me.username.charAt(0).toUpperCase();
 }
 function changeUser() {
     const n = prompt('Новый @username:');
@@ -179,7 +193,6 @@ function updateAv(input) {
 }
 function logout() { localStorage.clear(); location.reload(); }
 
-// АВТО-ВХОД
 const saved = localStorage.getItem('voxa_auth');
 if (saved) {
     const p = JSON.parse(saved);
