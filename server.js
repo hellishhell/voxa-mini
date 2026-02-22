@@ -105,6 +105,13 @@ io.on('connection', (socket) => {
             time: Date.now()
         };
         
+            // --- ИНДИКАЦИЯ ПЕЧАТАЕТ ---
+    socket.on('typing', (data) => {
+        // Рассылаем сигнал всем, клиент сам поймет, кому это адресовано
+        socket.broadcast.emit('is_typing', data); 
+    });
+
+        
         db.messages.push(newMsg);
         saveDB();
         
