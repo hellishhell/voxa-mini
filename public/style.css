@@ -56,3 +56,7 @@ body { margin: 0; background: url('https://w.wallhaven.cc/full/85/wallhaven-85m8
 
 .hidden { display: none; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.contact-info { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+.last-msg { font-size: 13px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.contact-item b { font-size: 16px; color: #000; }
