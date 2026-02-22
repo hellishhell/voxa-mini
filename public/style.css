@@ -1,7 +1,6 @@
 :root {
     --ios-blue: #007AFF;
     --ios-red: #FF3B30;
-    --glass-light: rgba(255, 255, 255, 0.7);
     --glass-white: rgba(255, 255, 255, 0.9);
 }
 
@@ -14,68 +13,71 @@ body {
     overflow: hidden;
 }
 
-#voxa { 
-    width: 100%; height: 100%; position: relative; 
-    background: transparent;
-}
+#voxa { width: 100%; height: 100%; position: relative; background: transparent; }
 
 @media (min-width: 420px) {
     #voxa { width: 400px; height: 800px; border-radius: 40px; border: 8px solid #000; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.2); }
 }
 
-.view { position: absolute; inset: 0; display: none; flex-direction: column; padding: 20px; padding-top: 60px; }
+.view { position: absolute; inset: 0; display: none; flex-direction: column; padding: 20px; padding-top: 50px; }
 .view.active { display: flex; }
 
-/* Стили заголовков и аватарок */
-.ios-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.avatar-circle { border-radius: 50%; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; background-color: #ccc; }
-.avatar-circle.sm { width: 36px; height: 36px; font-size: 14px; }
-.avatar-circle.lg { width: 100px; height: 100px; font-size: 32px; margin: 0 auto 15px; border: 3px solid white; }
+/* АВТОРИЗАЦИЯ */
+.auth-card { 
+    margin: 40px auto 0; padding: 30px 20px; width: 90%;
+    border-radius: 25px; background: var(--glass-white);
+    text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+.auth-tabs { display: flex; justify-content: center; gap: 20px; margin-bottom: 25px; }
+.auth-tabs span { font-weight: 600; color: #888; cursor: pointer; font-size: 18px; }
+.auth-tabs span.active { color: var(--ios-blue); }
 
-/* МОДАЛЬНОЕ ОКНО (Светлый мат) */
+.ios-input { 
+    width: 100%; padding: 14px; margin-bottom: 12px; border-radius: 12px; 
+    border: none; background: rgba(0,0,0,0.05); font-size: 16px; outline: none;
+}
+.ios-btn { 
+    width: 100%; padding: 14px; border-radius: 12px; background: var(--ios-blue); 
+    color: #fff; font-weight: 600; border: none; cursor: pointer; font-size: 17px;
+}
+
+/* ШАПКА */
+.ios-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; min-height: 50px; }
+.chat-header-grid { display: grid; grid-template-columns: 80px 1fr 80px; align-items: center; text-align: center; }
+.back-btn { background: none; border: none; color: var(--ios-blue); font-size: 17px; cursor: pointer; text-align: left; }
+.status-text { font-size: 11px; color: var(--ios-blue); display: block; }
+
+/* МОДАЛКА */
 .modal-overlay { 
-    position: absolute; inset: 0; 
-    background: rgba(0,0,0,0.2); 
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    position: absolute; inset: 0; background: rgba(0,0,0,0.2); 
+    backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
     z-index: 1000; display: flex; justify-content: center; align-items: center;
 }
-
 .modal-card { 
-    width: 80%; padding: 25px; 
-    border-radius: 30px; 
-    background: var(--glass-white); 
-    box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-    text-align: center;
-    border: 1px solid rgba(255,255,255,0.5);
+    width: 280px; padding: 25px; border-radius: 30px; 
+    background: var(--glass-white); text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.1);
 }
+.edit-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px; }
+.edit-icon { background: #e5e5ea; border: none; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
 
-.change-photo { color: var(--ios-blue); font-size: 15px; cursor: pointer; display: block; margin-bottom: 15px; }
-
-.edit-row { 
-    display: flex; align-items: center; justify-content: center; 
-    gap: 8px; margin-bottom: 25px; 
-}
-#prof-user-label { font-size: 20px; font-weight: 700; color: #000; }
-.edit-icon { 
-    background: #e5e5ea; border: none; width: 28px; height: 28px; 
-    border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px;
-}
-
-/* Кнопки в модалке */
 .modal-buttons { display: flex; flex-direction: column; gap: 10px; }
-.modal-buttons button { 
-    width: 100%; padding: 14px; border-radius: 12px; border: none; 
-    font-size: 17px; font-weight: 600; cursor: pointer; transition: 0.2s;
-}
-.btn-logout { background: #fff; color: var(--ios-red); border: 1px solid rgba(255,59,48,0.2) !important; }
-.btn-close { background: var(--ios-blue); color: #fff; }
-.modal-buttons button:active { opacity: 0.7; transform: scale(0.98); }
+.btn-logout { background: #fff; color: var(--ios-red); border: 1px solid rgba(255,59,48,0.1) !important; padding: 12px; border-radius: 10px; font-weight: 600; }
+.btn-close { background: var(--ios-blue); color: #fff; padding: 12px; border-radius: 10px; font-weight: 600; border: none; }
 
-/* Остальные элементы */
-.ios-input { width: 100%; padding: 14px; margin-bottom: 12px; border-radius: 12px; border: none; background: rgba(0,0,0,0.05); font-size: 16px; outline: none; }
-.search-bar { padding: 10px; border-radius: 12px; background: rgba(0,0,0,0.05); margin-bottom: 15px; }
-.search-bar input { background: transparent; border: none; width: 100%; outline: none; font-size: 16px; }
+/* АВАТАРКИ */
+.avatar-circle { border-radius: 50%; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; background-color: #ccc; width: 45px; height: 45px; }
+.avatar-circle.sm { width: 34px; height: 34px; font-size: 12px; }
+.avatar-circle.lg { width: 90px; height: 90px; margin: 0 auto 15px; font-size: 28px; border: 3px solid white; }
+
+/* ЧАТ */
+.scroll-area { flex: 1; overflow-y: auto; padding-bottom: 20px; }
 .msg.my { align-self: flex-end; background: var(--ios-blue); color: white; padding: 10px 15px; border-radius: 18px; border-bottom-right-radius: 4px; margin: 4px 0; max-width: 80%; }
-.msg.their { align-self: flex-start; background: #fff; color: #000; padding: 10px 15px; border-radius: 18px; border-bottom-left-radius: 4px; margin: 4px 0; max-width: 80%; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.msg.their { align-self: flex-start; background: #fff; color: #000; padding: 10px 15px; border-radius: 18px; border-bottom-left-radius: 4px; margin: 4px 0; max-width: 80%; }
+
+/* ВВОД */
+.input-container { padding: 10px; background: var(--glass-white); border-top: 1px solid rgba(0,0,0,0.05); }
+.input-row-v2 { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.05); padding: 5px 15px; border-radius: 25px; }
+.input-row-v2 input { flex: 1; background: transparent; border: none; padding: 10px 0; outline: none; font-size: 16px; }
+.send-btn-v2 { background: var(--ios-blue); border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 
 .hidden { display: none !important; }
