@@ -9,82 +9,72 @@ const io = new Server(server, { maxHttpBufferSize: 1e8 });
 
 app.use(express.static('public'));
 
-// Файловая база данных (создается автоматически)
-const USERS_FILE = './users.json';
-const MSGS_FILE = './messages.json';
+// Простейшая БД в файлах
+const DB_PATH = './database.json';
+let db = { users: {}, messages: [] };
 
-const loadData = (file) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : (file === USERS_FILE ? {} : []);
-const saveData = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+if (fs.existsSync(DB_PATH)) {
+    db = JSON.parse(fs.readFileSync(DB_PATH));
+}
 
-let users = loadData(USERS_FILE); // { login: { username, password, avatar } }
-let messages = loadData(MSGS_FILE);
-let onlineUsers = {}; // { socketId: login }
+const saveDB = () => fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 
 io.on('connection', (socket) => {
-    // РЕГИСТРАЦИЯ
-    socket.on('register', (data) => {
-        const { login, password, username } = data;
-        if (users[login]) return socket.emit('error_msg', 'Логин уже занят');
+    let sessionUser = null;
+
+    // Регистрация и Вход
+    socket.on('auth', (data) => {
+        const { login, password, username, isReg } = data;
         
-        users[login] = { login, password, username: username.toLowerCase(), avatar: null };
-        saveData(USERS_FILE, users);
-        socket.emit('auth_success', users[login]);
-    });
-
-    // ВХОД
-    socket.on('login', (data) => {
-        const { login, password } = data;
-        const user = users[login];
-        if (user && user.password === password) {
-            onlineUsers[socket.id] = login;
-            socket.emit('auth_success', user);
-            // Отправляем историю сообщений при входе
-            socket.emit('history', messages.filter(m => m.from === user.username || m.to === user.username));
+        if (isReg) {
+            if (db.users[login]) return socket.emit('auth_error', 'Логин занят');
+            db.users[login] = { login, password, username: username.toLowerCase(), avatar: null };
         } else {
-            socket.emit('error_msg', 'Неверный логин или пароль');
+            const user = db.users[login];
+            if (!user || user.password !== password) return socket.emit('auth_error', 'Ошибка входа');
         }
+
+        sessionUser = db.users[login];
+        saveDB();
+        socket.emit('auth_success', sessionUser);
+        
+        // Отправляем историю сообщений, касающуюся пользователя
+        const history = db.messages.filter(m => m.from === sessionUser.username || m.to === sessionUser.username);
+        socket.emit('chat_history', history);
     });
 
-    // ПОИСК (Исправлено)
-    socket.on('search_users', (query) => {
-        const results = Object.values(users)
-            .filter(u => u.username.includes(query.toLowerCase()))
+    // Поиск пользователей
+    socket.on('search', (query) => {
+        const results = Object.values(db.users)
+            .filter(u => u.username.includes(query.toLowerCase()) && u.username !== sessionUser?.username)
             .map(u => ({ username: u.username, avatar: u.avatar }));
         socket.emit('search_results', results);
     });
 
-    // СМЕНА ЮЗЕРНЕЙМА И АВАТАРА
+    // Обновление профиля
     socket.on('update_profile', (data) => {
-        const login = onlineUsers[socket.id];
-        if (login && users[login]) {
-            if (data.username) users[login].username = data.username.toLowerCase();
-            if (data.avatar) users[login].avatar = data.avatar;
-            saveData(USERS_FILE, users);
-            socket.emit('auth_success', users[login]);
-        }
+        if (!sessionUser) return;
+        if (data.username) db.users[sessionUser.login].username = data.username.toLowerCase();
+        if (data.avatar) db.users[sessionUser.login].avatar = data.avatar;
+        sessionUser = db.users[sessionUser.login];
+        saveDB();
+        socket.emit('auth_success', sessionUser);
     });
 
-    // СООБЩЕНИЯ (С сохранением)
-    socket.on('send_message', (data) => {
-        const login = onlineUsers[socket.id];
-        if (!login) return;
-
-        const msg = {
-            from: users[login].username,
+    // Сообщения
+    socket.on('msg', (data) => {
+        if (!sessionUser) return;
+        const newMsg = {
+            from: sessionUser.username,
             to: data.to,
-            content: data.content,
+            text: data.text,
             type: data.type,
-            timestamp: new Date().toISOString()
+            time: Date.now()
         };
-        messages.push(msg);
-        saveData(MSGS_FILE, messages);
-
-        // Рассылка (себе и получателю)
-        io.emit('receive_message', msg); 
+        db.messages.push(newMsg);
+        saveDB();
+        io.emit('msg_receive', newMsg);
     });
-
-    socket.on('disconnect', () => delete onlineUsers[socket.id]);
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Voxa-mini Live on ${PORT}`));
+server.listen(process.env.PORT || 3000);
