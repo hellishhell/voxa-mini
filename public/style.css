@@ -81,3 +81,21 @@ body {
 .send-btn-v2 { background: var(--ios-blue); border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 
 .hidden { display: none !important; }
+
+/* Подсветка активной вкладки */
+.auth-tabs span {
+    transition: all 0.3s ease;
+    padding-bottom: 5px;
+    border-bottom: 2px solid transparent;
+}
+
+.auth-tabs span.active {
+    color: var(--ios-blue) !important;
+    border-bottom: 2px solid var(--ios-blue);
+}
+
+/* Фикс для кнопки, чтобы она визуально нажималась */
+.ios-btn:active {
+    opacity: 0.8;
+    transform: scale(0.98);
+}
