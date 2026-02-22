@@ -1,140 +1,128 @@
 const socket = io();
-let currentUser = null;
-let currentChatPartner = null;
+let me = null;
+let currentChat = null;
 let isRegMode = false;
 
-// ПЕРЕКЛЮЧЕНИЕ ТАБОВ
-document.getElementById('tab-login-btn').onclick = () => {
-    isRegMode = false;
-    document.getElementById('auth-username').classList.add('hidden');
-    document.getElementById('tab-login-btn').classList.add('active');
-    document.getElementById('tab-reg-btn').classList.remove('active');
-    document.getElementById('main-auth-btn').innerText = 'Войти';
-};
-
-document.getElementById('tab-reg-btn').onclick = () => {
-    isRegMode = true;
-    document.getElementById('auth-username').classList.remove('hidden');
-    document.getElementById('tab-reg-btn').classList.add('active');
-    document.getElementById('tab-login-btn').classList.remove('active');
-    document.getElementById('main-auth-btn').innerText = 'Создать аккаунт';
-};
-
-// АВТОРИЗАЦИЯ
-document.getElementById('main-auth-btn').onclick = () => {
-    const login = document.getElementById('auth-login').value;
-    const pass = document.getElementById('auth-pass').value;
-    const username = document.getElementById('auth-username').value;
-
-    if (isRegMode) {
-        socket.emit('register', { login, password: pass, username });
-    } else {
-        socket.emit('login', { login, password: pass });
-    }
-};
-
-socket.on('auth_success', (user) => {
-    currentUser = user;
-    localStorage.setItem('voxa_session', JSON.stringify({login: user.login, pass: user.password}));
-    renderProfile();
-    document.getElementById('auth-screen').classList.remove('active');
-    document.getElementById('main-screen').classList.add('active');
-});
-
-function renderProfile() {
-    document.getElementById('my-display-name').innerText = `@${currentUser.username}`;
-    document.getElementById('prof-username').innerText = `@${currentUser.username}`;
-    if (currentUser.avatar) {
-        document.getElementById('my-avatar-img').src = currentUser.avatar;
-        document.getElementById('my-avatar-img').classList.remove('hidden');
-        document.getElementById('profile-preview').src = currentUser.avatar;
-    }
+// 1. Авторизация
+function toggleAuth(reg) {
+    isRegMode = reg;
+    document.getElementById('t-login').className = reg ? '' : 'active';
+    document.getElementById('t-reg').className = reg ? 'active' : '';
+    document.getElementById('usr-in').className = reg ? 'ios-input' : 'ios-input hidden';
 }
 
-// ВЫХОД
-document.getElementById('logout-btn').onclick = () => {
-    localStorage.removeItem('voxa_session');
-    location.reload();
-};
+function doAuth() {
+    const data = {
+        login: document.getElementById('log-in').value,
+        password: document.getElementById('pas-in').value,
+        username: document.getElementById('usr-in').value,
+        isReg: isRegMode
+    };
+    if (!data.login || !data.password) return alert('Заполни поля');
+    socket.emit('auth', data);
+}
 
-// ПОИСК
-document.getElementById('search-input').oninput = (e) => {
-    if (e.target.value.length > 0) socket.emit('search_users', e.target.value);
-};
+socket.on('auth_error', err => alert(err));
+socket.on('auth_success', user => {
+    me = user;
+    localStorage.setItem('voxa_auth', JSON.stringify({l:user.login, p:user.password}));
+    renderProfile();
+    showView('main-screen');
+});
 
-socket.on('search_results', (users) => {
-    const list = document.getElementById('users-list');
+// 2. Поиск
+function doSearch() {
+    const q = document.getElementById('search-in').value;
+    if (q.length > 0) socket.emit('search', q);
+}
+
+socket.on('search_results', users => {
+    const list = document.getElementById('contacts-list');
     list.innerHTML = '';
     users.forEach(u => {
-        if (u.username === currentUser.username) return;
-        const div = document.createElement('div');
-        div.className = 'user-item';
-        div.style = "padding:15px; background:rgba(255,255,255,0.1); border-radius:15px; margin-bottom:10px; display:flex; align-items:center; gap:10px;";
-        div.innerHTML = `<img src="${u.avatar || 'https://via.placeholder.com/40'}" class="avatar-sm"> <span>@${u.username}</span>`;
-        div.onclick = () => openChat(u);
-        list.appendChild(div);
+        const item = document.createElement('div');
+        item.className = 'contact-item glass';
+        item.innerHTML = `<div class="avatar-circle sm" style="background-image:url(${u.avatar || ''})"></div> <b>@${u.username}</b>`;
+        item.onclick = () => openChat(u);
+        list.appendChild(item);
     });
 });
 
-// ЧАТ
+// 3. Чат
 function openChat(user) {
-    currentChatPartner = user.username;
-    document.getElementById('chat-with-name').innerText = `@${user.username}`;
-    document.getElementById('chat-avatar').src = user.avatar || 'https://via.placeholder.com/40';
-    document.getElementById('chat-avatar').classList.remove('hidden');
-    document.getElementById('chat-messages').innerHTML = '';
-    document.getElementById('main-screen').classList.remove('active');
-    document.getElementById('chat-screen').classList.add('active');
-    // Запрос истории будет автоматическим, так как сервер хранит все сообщения
+    currentChat = user.username;
+    document.getElementById('chat-title').innerText = '@' + user.username;
+    document.getElementById('chat-avatar').style.backgroundImage = `url(${user.avatar || ''})`;
+    document.getElementById('chat-flow').innerHTML = '';
+    showView('chat-screen');
 }
 
-document.getElementById('back-btn').onclick = () => {
-    document.getElementById('chat-screen').classList.remove('active');
-    document.getElementById('main-screen').classList.add('active');
-};
+function closeChat() { showView('main-screen'); currentChat = null; }
 
-// ОТПРАВКА
-document.getElementById('send-btn').onclick = () => {
-    const text = document.getElementById('message-input').value;
-    if (text) {
-        socket.emit('send_message', { to: currentChatPartner, content: text, type: 'text' });
-        document.getElementById('message-input').value = '';
-    }
-};
+function sendTxt() {
+    const text = document.getElementById('msg-in').value;
+    if (!text || !currentChat) return;
+    socket.emit('msg', { to: currentChat, text, type: 'text' });
+    document.getElementById('msg-in').value = '';
+}
 
-socket.on('receive_message', (msg) => {
-    if ((msg.from === currentUser.username && msg.to === currentChatPartner) || 
-        (msg.to === currentUser.username && msg.from === currentChatPartner)) {
-        appendMessage(msg);
+function sendImg() {
+    const file = document.getElementById('img-in').files[0];
+    const reader = new FileReader();
+    reader.onload = () => socket.emit('msg', { to: currentChat, text: reader.result, type: 'img' });
+    reader.readAsDataURL(file);
+}
+
+socket.on('msg_receive', m => {
+    if (m.from === me.username || m.to === me.username) {
+        if (currentChat === m.from || currentChat === m.to) {
+            const flow = document.getElementById('chat-flow');
+            const div = document.createElement('div');
+            div.className = `msg ${m.from === me.username ? 'my' : 'their'}`;
+            div.innerHTML = m.type === 'text' ? m.text : `<img src="${m.text}">`;
+            flow.appendChild(div);
+            flow.scrollTop = flow.scrollHeight;
+        }
+        // Авто-добавление в список чатов здесь можно реализовать через отдельный список
     }
 });
 
-socket.on('history', (msgs) => {
-    msgs.forEach(appendMessage);
+socket.on('chat_history', history => {
+    // Можно отрисовать последние чаты на главном экране
 });
 
-function appendMessage(msg) {
-    const area = document.getElementById('chat-messages');
-    const div = document.createElement('div');
-    div.className = `msg ${msg.from === currentUser.username ? 'my' : 'their'}`;
-    div.innerText = msg.content;
-    area.appendChild(div);
-    area.scrollTop = area.scrollHeight;
+// 4. Профиль
+function showProfile(show) { document.getElementById('profile-modal').classList.toggle('hidden', !show); }
+
+function renderProfile() {
+    document.getElementById('my-name').innerText = '@' + me.username;
+    document.getElementById('prof-user-label').innerText = '@' + me.username;
+    const av = me.avatar ? `url(${me.avatar})` : '';
+    document.getElementById('my-avatar').style.backgroundImage = av;
+    document.getElementById('prof-preview').style.backgroundImage = av;
 }
 
-// СМЕНА АВАТАРА
-document.getElementById('avatar-upload').onchange = function(e) {
+function changeUser() {
+    const n = prompt('Новый @username:');
+    if (n) socket.emit('update_profile', { username: n });
+}
+
+function updateAv(input) {
     const reader = new FileReader();
     reader.onload = () => socket.emit('update_profile', { avatar: reader.result });
-    reader.readAsDataURL(e.target.files[0]);
-};
+    reader.readAsDataURL(input.files[0]);
+}
 
-// СМЕНА ЮЗЕРНЕЙМА
-document.getElementById('edit-un-btn').onclick = () => {
-    const newName = prompt("Введите новый @username:");
-    if (newName) socket.emit('update_profile', { username: newName });
-};
+function logout() { localStorage.clear(); location.reload(); }
 
-// ОТКРЫТЬ ПРОФИЛЬ
-document.getElementById('open-profile').onclick = () => document.getElementById('profile-modal').classList.remove('hidden');
-document.getElementById('close-profile-btn').onclick = () => document.getElementById('profile-modal').classList.add('hidden');
+function showView(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+// Авто-вход
+const saved = localStorage.getItem('voxa_auth');
+if (saved) {
+    const p = JSON.parse(saved);
+    socket.emit('auth', { login: p.l, password: p.p, isReg: false });
+}
