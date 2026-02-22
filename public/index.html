@@ -2,55 +2,70 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Voxa-mini</title>
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <div id="app" class="glass-container">
+    <div id="voxa" class="ios-blur">
         
-        <div id="login-screen" class="screen active">
-            <h1>Voxa-mini</h1>
-            <p>Введи свой юзернейм</p>
-            <div class="input-group">
-                <span class="at-symbol">@</span>
-                <input type="text" id="username-input" placeholder="username" autocomplete="off">
-            </div>
-            <button id="login-btn">Войти</button>
-        </div>
-
-        <div id="main-screen" class="screen">
-            <div class="header">
-                <h2>Чаты</h2>
-                <div class="profile-btn" id="open-profile">⚙️</div>
-            </div>
-            <input type="text" id="search-input" class="glass-input" placeholder="Поиск по @username...">
-            <div id="users-list" class="list-container"></div>
-            
-            <div id="profile-modal" class="modal hidden glass-container">
-                <h3>Твой профиль</h3>
-                <p>Текущее имя: <strong id="current-username"></strong></p>
-                <input type="text" id="new-username" class="glass-input" placeholder="Новый @username">
-                <button id="save-username-btn">Сохранить</button>
-                <button id="close-profile-btn" class="secondary-btn">Закрыть</button>
-            </div>
-        </div>
-
-        <div id="chat-screen" class="screen">
-            <div class="header">
-                <button id="back-btn">⟨ Назад</button>
-                <div class="chat-info">
-                    <h2 id="chat-with-name">@user</h2>
-                    <span id="typing-indicator"></span>
+        <div id="auth-screen" class="view active">
+            <div class="auth-card glass">
+                <h1>Voxa</h1>
+                <div class="auth-tabs">
+                    <span id="t-login" class="active" onclick="toggleAuth(false)">Вход</span>
+                    <span id="t-reg" onclick="toggleAuth(true)">Регистрация</span>
                 </div>
+                <input type="text" id="log-in" placeholder="Логин" class="ios-input">
+                <input type="password" id="pas-in" placeholder="Пароль" class="ios-input">
+                <input type="text" id="usr-in" placeholder="@username" class="ios-input hidden">
+                <button onclick="doAuth()" class="ios-btn">Продолжить</button>
             </div>
-            <div id="chat-messages"></div>
-            <div class="chat-input-area">
-                <label for="file-input" class="attach-btn">📷</label>
-                <input type="file" id="file-input" accept="image/*" hidden>
-                <input type="text" id="message-input" class="glass-input" placeholder="Сообщение...">
-                <button id="send-btn">➤</button>
+        </div>
+
+        <div id="main-screen" class="view">
+            <div class="ios-header">
+                <h2 id="my-name">Чаты</h2>
+                <div onclick="showProfile(true)" id="my-avatar" class="avatar-circle"></div>
+            </div>
+            <div class="search-bar glass">
+                <input type="text" id="search-in" placeholder="Поиск в Voxa..." oninput="doSearch()">
+            </div>
+            <div id="contacts-list" class="scroll-area"></div>
+        </div>
+
+        <div id="chat-screen" class="view">
+            <div class="ios-header">
+                <button class="back-btn" onclick="closeChat()">⟨ Назад</button>
+                <div class="chat-meta">
+                    <b id="chat-title">@username</b>
+                    <span>в сети</span>
+                </div>
+                <div id="chat-avatar" class="avatar-circle sm"></div>
+            </div>
+            <div id="chat-flow" class="scroll-area"></div>
+            <div class="input-row glass">
+                <label class="attach">📎<input type="file" id="img-in" hidden onchange="sendImg()"></label>
+                <input type="text" id="msg-in" placeholder="Сообщение">
+                <button onclick="sendTxt()" class="send-btn">➤</button>
+            </div>
+        </div>
+
+        <div id="profile-modal" class="modal-overlay hidden">
+            <div class="modal-card glass-dark">
+                <div id="prof-preview" class="avatar-circle lg"></div>
+                <label class="change-photo">Сменить фото <input type="file" hidden onchange="updateAv(this)"></label>
+                
+                <div class="edit-row">
+                    <span id="prof-user-label">@username</span>
+                    <button class="edit-icon" onclick="changeUser()">✎</button>
+                </div>
+
+                <div class="modal-buttons">
+                    <button onclick="logout()" class="btn-logout">Выход</button>
+                    <button onclick="showProfile(false)" class="btn-close">Закрыть</button>
+                </div>
             </div>
         </div>
 
