@@ -1,144 +1,140 @@
 const socket = io();
-
-// Состояние приложения
 let currentUser = null;
-let currentChatUser = null;
-let typingTimeout = null;
+let currentChatPartner = null;
+let isRegMode = false;
 
-// Элементы DOM
-const screens = {
-    login: document.getElementById('login-screen'),
-    main: document.getElementById('main-screen'),
-    chat: document.getElementById('chat-screen')
+// ПЕРЕКЛЮЧЕНИЕ ТАБОВ
+document.getElementById('tab-login-btn').onclick = () => {
+    isRegMode = false;
+    document.getElementById('auth-username').classList.add('hidden');
+    document.getElementById('tab-login-btn').classList.add('active');
+    document.getElementById('tab-reg-btn').classList.remove('active');
+    document.getElementById('main-auth-btn').innerText = 'Войти';
 };
 
-// Функция переключения экранов
-function showScreen(screenName) {
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[screenName].classList.add('active');
-}
+document.getElementById('tab-reg-btn').onclick = () => {
+    isRegMode = true;
+    document.getElementById('auth-username').classList.remove('hidden');
+    document.getElementById('tab-reg-btn').classList.add('active');
+    document.getElementById('tab-login-btn').classList.remove('active');
+    document.getElementById('main-auth-btn').innerText = 'Создать аккаунт';
+};
 
-// 1. ИНИЦИАЛИЗАЦИЯ (Локальная память)
-window.onload = () => {
-    const savedUser = localStorage.getItem('voxa_user');
-    if (savedUser) {
-        currentUser = JSON.parse(savedUser);
-        socket.emit('login', currentUser.username);
+// АВТОРИЗАЦИЯ
+document.getElementById('main-auth-btn').onclick = () => {
+    const login = document.getElementById('auth-login').value;
+    const pass = document.getElementById('auth-pass').value;
+    const username = document.getElementById('auth-username').value;
+
+    if (isRegMode) {
+        socket.emit('register', { login, password: pass, username });
+    } else {
+        socket.emit('login', { login, password: pass });
     }
 };
 
-socket.on('login_success', (user) => {
+socket.on('auth_success', (user) => {
     currentUser = user;
-    localStorage.setItem('voxa_user', JSON.stringify(user));
-    document.getElementById('current-username').innerText = `@${user.username}`;
-    showScreen('main');
+    localStorage.setItem('voxa_session', JSON.stringify({login: user.login, pass: user.password}));
+    renderProfile();
+    document.getElementById('auth-screen').classList.remove('active');
+    document.getElementById('main-screen').classList.add('active');
 });
 
-// 2. ЛОГИН
-document.getElementById('login-btn').addEventListener('click', () => {
-    const username = document.getElementById('username-input').value.trim();
-    if (username) socket.emit('login', username);
-});
+function renderProfile() {
+    document.getElementById('my-display-name').innerText = `@${currentUser.username}`;
+    document.getElementById('prof-username').innerText = `@${currentUser.username}`;
+    if (currentUser.avatar) {
+        document.getElementById('my-avatar-img').src = currentUser.avatar;
+        document.getElementById('my-avatar-img').classList.remove('hidden');
+        document.getElementById('profile-preview').src = currentUser.avatar;
+    }
+}
 
-// 3. ПОИСК И СПИСОК ЧАТОВ
-const searchInput = document.getElementById('search-input');
-const usersList = document.getElementById('users-list');
+// ВЫХОД
+document.getElementById('logout-btn').onclick = () => {
+    localStorage.removeItem('voxa_session');
+    location.reload();
+};
 
-searchInput.addEventListener('input', (e) => {
-    socket.emit('search_users', e.target.value);
-});
+// ПОИСК
+document.getElementById('search-input').oninput = (e) => {
+    if (e.target.value.length > 0) socket.emit('search_users', e.target.value);
+};
 
 socket.on('search_results', (users) => {
-    usersList.innerHTML = '';
+    const list = document.getElementById('users-list');
+    list.innerHTML = '';
     users.forEach(u => {
+        if (u.username === currentUser.username) return;
         const div = document.createElement('div');
         div.className = 'user-item';
-        div.innerHTML = `<span>@${u.username}</span> <span class="online">В сети</span>`;
-        div.onclick = () => openChat(u.username);
-        usersList.appendChild(div);
+        div.style = "padding:15px; background:rgba(255,255,255,0.1); border-radius:15px; margin-bottom:10px; display:flex; align-items:center; gap:10px;";
+        div.innerHTML = `<img src="${u.avatar || 'https://via.placeholder.com/40'}" class="avatar-sm"> <span>@${u.username}</span>`;
+        div.onclick = () => openChat(u);
+        list.appendChild(div);
     });
 });
 
-// 4. ПРОФИЛЬ (Смена юзернейма)
-document.getElementById('open-profile').onclick = () => document.getElementById('profile-modal').classList.remove('hidden');
-document.getElementById('close-profile-btn').onclick = () => document.getElementById('profile-modal').classList.add('hidden');
-
-document.getElementById('save-username-btn').onclick = () => {
-    const newName = document.getElementById('new-username').value.trim();
-    if (newName) socket.emit('change_username', newName);
-    document.getElementById('profile-modal').classList.add('hidden');
-};
-
-// 5. ЧАТ И СООБЩЕНИЯ
-function openChat(username) {
-    currentChatUser = username;
-    document.getElementById('chat-with-name').innerText = `@${username}`;
-    document.getElementById('chat-messages').innerHTML = ''; // Для мини-версии очищаем при входе
-    showScreen('chat');
+// ЧАТ
+function openChat(user) {
+    currentChatPartner = user.username;
+    document.getElementById('chat-with-name').innerText = `@${user.username}`;
+    document.getElementById('chat-avatar').src = user.avatar || 'https://via.placeholder.com/40';
+    document.getElementById('chat-avatar').classList.remove('hidden');
+    document.getElementById('chat-messages').innerHTML = '';
+    document.getElementById('main-screen').classList.remove('active');
+    document.getElementById('chat-screen').classList.add('active');
+    // Запрос истории будет автоматическим, так как сервер хранит все сообщения
 }
 
 document.getElementById('back-btn').onclick = () => {
-    currentChatUser = null;
-    showScreen('main');
+    document.getElementById('chat-screen').classList.remove('active');
+    document.getElementById('main-screen').classList.add('active');
 };
 
-// Отправка текста
-const msgInput = document.getElementById('message-input');
-document.getElementById('send-btn').onclick = sendMessage;
-
-function sendMessage() {
-    const text = msgInput.value.trim();
-    if (text && currentChatUser) {
-        socket.emit('send_message', { to: currentChatUser, content: text, type: 'text' });
-        msgInput.value = '';
+// ОТПРАВКА
+document.getElementById('send-btn').onclick = () => {
+    const text = document.getElementById('message-input').value;
+    if (text) {
+        socket.emit('send_message', { to: currentChatPartner, content: text, type: 'text' });
+        document.getElementById('message-input').value = '';
     }
+};
+
+socket.on('receive_message', (msg) => {
+    if ((msg.from === currentUser.username && msg.to === currentChatPartner) || 
+        (msg.to === currentUser.username && msg.from === currentChatPartner)) {
+        appendMessage(msg);
+    }
+});
+
+socket.on('history', (msgs) => {
+    msgs.forEach(appendMessage);
+});
+
+function appendMessage(msg) {
+    const area = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = `msg ${msg.from === currentUser.username ? 'my' : 'their'}`;
+    div.innerText = msg.content;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
 }
 
-// Отправка фото
-document.getElementById('file-input').addEventListener('change', function() {
-    const file = this.files[0];
-    if (file && currentChatUser) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const base64Image = e.target.result;
-            socket.emit('send_message', { to: currentChatUser, content: base64Image, type: 'image' });
-        };
-        reader.readAsDataURL(file);
-    }
-});
+// СМЕНА АВАТАРА
+document.getElementById('avatar-upload').onchange = function(e) {
+    const reader = new FileReader();
+    reader.onload = () => socket.emit('update_profile', { avatar: reader.result });
+    reader.readAsDataURL(e.target.files[0]);
+};
 
-// Получение сообщений
-socket.on('receive_message', (msg) => {
-    if (currentChatUser === msg.from || currentChatUser === msg.to) {
-        const chatArea = document.getElementById('chat-messages');
-        const div = document.createElement('div');
-        div.className = `msg ${msg.from === currentUser.username ? 'my' : 'their'}`;
-        
-        if (msg.type === 'text') {
-            div.innerText = msg.content;
-        } else {
-            const img = document.createElement('img');
-            img.src = msg.content;
-            div.appendChild(img);
-        }
-        
-        chatArea.appendChild(div);
-        chatArea.scrollTop = chatArea.scrollHeight;
-    } else {
-        // Если сообщение пришло от того, с кем мы не в чате — можно добавить кружочек-уведомление (оставим на будущее)
-    }
-});
+// СМЕНА ЮЗЕРНЕЙМА
+document.getElementById('edit-un-btn').onclick = () => {
+    const newName = prompt("Введите новый @username:");
+    if (newName) socket.emit('update_profile', { username: newName });
+};
 
-// Бонус: Индикатор печати
-msgInput.addEventListener('input', () => {
-    if (currentChatUser) socket.emit('typing', currentChatUser);
-});
-
-socket.on('user_typing', (username) => {
-    if (currentChatUser === username) {
-        const indicator = document.getElementById('typing-indicator');
-        indicator.innerText = 'печатает...';
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => { indicator.innerText = ''; }, 1500);
-    }
-});
+// ОТКРЫТЬ ПРОФИЛЬ
+document.getElementById('open-profile').onclick = () => document.getElementById('profile-modal').classList.remove('hidden');
+document.getElementById('close-profile-btn').onclick = () => document.getElementById('profile-modal').classList.add('hidden');
