@@ -1,87 +1,90 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { maxHttpBufferSize: 1e8 }); // Для фото
+const io = new Server(server, { maxHttpBufferSize: 1e8 });
 
 app.use(express.static('public'));
 
-// База данных в памяти (при перезапуске Render она очистится, для реального продакшена потом подключим базу)
-let users = {}; // { socketId: { id, username } }
-let messages = []; // { from, to, text, type, timestamp }
+// Файловая база данных (создается автоматически)
+const USERS_FILE = './users.json';
+const MSGS_FILE = './messages.json';
+
+const loadData = (file) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : (file === USERS_FILE ? {} : []);
+const saveData = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+
+let users = loadData(USERS_FILE); // { login: { username, password, avatar } }
+let messages = loadData(MSGS_FILE);
+let onlineUsers = {}; // { socketId: login }
 
 io.on('connection', (socket) => {
-    console.log('Пользователь подключился:', socket.id);
-
-    // Регистрация/Вход
-    socket.on('login', (username) => {
-        users[socket.id] = { id: socket.id, username: username.toLowerCase() };
-        socket.emit('login_success', users[socket.id]);
-        io.emit('users_update', Object.values(users)); // Обновляем список для всех
+    // РЕГИСТРАЦИЯ
+    socket.on('register', (data) => {
+        const { login, password, username } = data;
+        if (users[login]) return socket.emit('error_msg', 'Логин уже занят');
+        
+        users[login] = { login, password, username: username.toLowerCase(), avatar: null };
+        saveData(USERS_FILE, users);
+        socket.emit('auth_success', users[login]);
     });
 
-    // Изменение юзернейма
-    socket.on('change_username', (newUsername) => {
-        if (users[socket.id]) {
-            users[socket.id].username = newUsername.toLowerCase();
-            socket.emit('login_success', users[socket.id]);
-            io.emit('users_update', Object.values(users));
+    // ВХОД
+    socket.on('login', (data) => {
+        const { login, password } = data;
+        const user = users[login];
+        if (user && user.password === password) {
+            onlineUsers[socket.id] = login;
+            socket.emit('auth_success', user);
+            // Отправляем историю сообщений при входе
+            socket.emit('history', messages.filter(m => m.from === user.username || m.to === user.username));
+        } else {
+            socket.emit('error_msg', 'Неверный логин или пароль');
         }
     });
 
-    // Поиск
+    // ПОИСК (Исправлено)
     socket.on('search_users', (query) => {
-        const results = Object.values(users).filter(u => 
-            u.username.includes(query.toLowerCase()) && u.id !== socket.id
-        );
+        const results = Object.values(users)
+            .filter(u => u.username.includes(query.toLowerCase()))
+            .map(u => ({ username: u.username, avatar: u.avatar }));
         socket.emit('search_results', results);
     });
 
-    // Отправка сообщений (текст или фото)
+    // СМЕНА ЮЗЕРНЕЙМА И АВАТАРА
+    socket.on('update_profile', (data) => {
+        const login = onlineUsers[socket.id];
+        if (login && users[login]) {
+            if (data.username) users[login].username = data.username.toLowerCase();
+            if (data.avatar) users[login].avatar = data.avatar;
+            saveData(USERS_FILE, users);
+            socket.emit('auth_success', users[login]);
+        }
+    });
+
+    // СООБЩЕНИЯ (С сохранением)
     socket.on('send_message', (data) => {
+        const login = onlineUsers[socket.id];
+        if (!login) return;
+
         const msg = {
-            from: users[socket.id].username,
+            from: users[login].username,
             to: data.to,
             content: data.content,
-            type: data.type, // 'text' или 'image'
+            type: data.type,
             timestamp: new Date().toISOString()
         };
         messages.push(msg);
+        saveData(MSGS_FILE, messages);
 
-        // Ищем socket.id получателя
-        const receiver = Object.values(users).find(u => u.username === data.to);
-        if (receiver) {
-            const receiverSocketId = Object.keys(users).find(key => users[key].id === receiver.id);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('receive_message', msg);
-            }
-        }
-        // Отправляем обратно себе для отображения
-        socket.emit('receive_message', msg);
+        // Рассылка (себе и получателю)
+        io.emit('receive_message', msg); 
     });
 
-    // Бонус: Индикатор печати
-    socket.on('typing', (to) => {
-        const receiver = Object.values(users).find(u => u.username === to);
-        if (receiver) {
-            const receiverSocketId = Object.keys(users).find(key => users[key].id === receiver.id);
-            if (receiverSocketId) {
-                io.to(receiverSocketId).emit('user_typing', users[socket.id].username);
-            }
-        }
-    });
-
-    // Отключение
-    socket.on('disconnect', () => {
-        delete users[socket.id];
-        io.emit('users_update', Object.values(users));
-        console.log('Пользователь отключился');
-    });
+    socket.on('disconnect', () => delete onlineUsers[socket.id]);
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Voxa-mini работает на порту ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Voxa-mini Live on ${PORT}`));
